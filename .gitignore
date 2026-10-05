@@ -1,0 +1,8 @@
+/vendor
+/node_modules
+/public/storage
+/storage/*.key
+/storage/app/firebase-export
+/bootstrap/cache/*.php
+.env
+.phpunit.result.cache
