@@ -33,8 +33,12 @@ class GenerateDesignAction
             $options = array_filter(['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null]);
             $textProvider = $this->resolver->text($user, $options);
 
-            $system = 'أنت مصمم إبداعي، تُنتج فكرة تصميم قصيرة وواضحة بناءً على الطلب، دون أي شرح إضافي.';
-            $result = $textProvider->complete($system, [['role' => 'user', 'content' => $data['prompt']]], $options);
+            $mandatory = ($data['mode'] ?? 'branded') === 'free' ? '' : trim((string) ($data['mandatory_prompt'] ?? ''));
+            $result = $textProvider->complete(
+                self::designSystemPrompt($mandatory),
+                [['role' => 'user', 'content' => self::designUserPrompt($data)]],
+                $options,
+            );
 
             $imageProvider = $this->resolver->image($user, $options);
             $imageResult = $imageProvider->generate($result->text, $options);
@@ -58,7 +62,7 @@ class GenerateDesignAction
 
             $remainingCredits = (int) $charge->balance_after;
 
-            $design = DB::transaction(function () use ($data, $user, $result, $imageResult, $media, $cost, $remainingCredits) {
+            $design = DB::transaction(function () use ($data, $user, $result, $imageResult, $media, $cost, $remainingCredits, $mandatory) {
                 $design = Design::create([
                     'user_id' => $user->getKey(),
                     'brand_id' => $data['brand_id'] ?? null,
@@ -82,6 +86,7 @@ class GenerateDesignAction
                 // Transient — cost/remaining_credits aren't DB columns, just
                 // carried on this in-memory instance for the response only.
                 $version->setAttribute('cost', $cost);
+                $version->setAttribute('applied_mandatory', $mandatory !== '');
                 $version->setAttribute('remaining_credits', $remainingCredits);
 
                 // Attach the relation manually with this exact instance:
@@ -101,5 +106,39 @@ class GenerateDesignAction
             $this->logger->usage($user, 'design_generate', ['status' => 'failed', 'error' => $e->getMessage()]);
             throw $e;
         }
+    }
+
+    /** System prompt for the image brief; the mandatory user prompt is binding when present. */
+    public static function designSystemPrompt(string $mandatory): string
+    {
+        $system = 'You are a senior art director. Turn the request into ONE precise English image-generation prompt for a social-media design: '
+            .'subject and scene, composition and focal point, colors and lighting, typography style, and any short on-image Arabic headline in quotes. '
+            .'Do not draw any logo (it is added later). Return only the prompt text, no explanations.';
+
+        if ($mandatory !== '') {
+            $system .= "\n\nMANDATORY DESIGN PROMPT from the user's Planning & Understanding section. It is BINDING for this design and overrides any conflicting idea; apply every instruction literally:\n<<<\n"
+                .$mandatory."\n>>>";
+        }
+
+        return $system;
+    }
+
+    public static function designUserPrompt(array $data): string
+    {
+        $parts = ['DESIGN REQUEST: '.$data['prompt']];
+        if (! empty($data['content_text'])) {
+            $parts[] = 'POST CONTENT (the design must express its main message):'."\n".$data['content_text'];
+        }
+        if (! empty($data['platform'])) {
+            $parts[] = 'PLATFORM: '.$data['platform'];
+        }
+        if (! empty($data['style_instructions'])) {
+            $parts[] = 'STYLE: '.$data['style_instructions'];
+        }
+        if (! empty($data['negative_instructions'])) {
+            $parts[] = 'AVOID: '.$data['negative_instructions'];
+        }
+
+        return implode("\n\n", $parts);
     }
 }

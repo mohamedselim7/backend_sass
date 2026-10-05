@@ -19,6 +19,7 @@ class DesignVersionResource extends JsonResource
             'model' => $this->model,
             'cost' => $this->cost,
             'remaining_credits' => $this->remaining_credits,
+            'applied_mandatory' => (bool) $this->applied_mandatory,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

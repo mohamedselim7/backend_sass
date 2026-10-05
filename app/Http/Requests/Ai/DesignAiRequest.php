@@ -14,6 +14,13 @@ class DesignAiRequest extends FormRequest
             'prompt' => ['required', 'string', 'max:5000'],
             'headline' => ['nullable', 'string', 'max:1000'],
             'format' => ['nullable', 'string', 'max:32'],
+            'mode' => ['nullable', 'in:branded,free'],
+            'platform' => ['nullable', 'string', 'max:64'],
+            'content_text' => ['nullable', 'string', 'max:8000'],
+            'style_instructions' => ['nullable', 'string', 'max:3000'],
+            'negative_instructions' => ['nullable', 'string', 'max:3000'],
+            // Mandatory design prompt from "Planning & Understanding" (branded designs only).
+            'mandatory_prompt' => ['nullable', 'string', 'max:6000'],
         ];
     }
 }

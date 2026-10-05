@@ -30,6 +30,13 @@ class GenerateContentAction
         try {
             $plans = $this->generator->generatePlan(array_merge($data, ['_user' => $user]));
 
+            // Keep the chosen writing settings on every stored plan.
+            $plans = array_map(fn ($plan) => is_array($plan) ? $plan + array_filter([
+                'language_id' => $data['language_id'] ?? null,
+                'dialect_id' => $data['dialect_id'] ?? null,
+                'tone_id' => $data['tone_id'] ?? null,
+            ]) : $plan, $plans);
+
             $generation = $this->content->storeGeneration($user, [
                 'brand_id' => $data['brand_id'] ?? null,
                 'brand_name' => $data['brand_name'] ?? null,
