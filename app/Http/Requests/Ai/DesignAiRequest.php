@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Ai;
 
+use App\Services\Ai\Prompts\DesignFormat;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class DesignAiRequest extends FormRequest
 {
@@ -14,6 +16,7 @@ class DesignAiRequest extends FormRequest
             'prompt' => ['required', 'string', 'max:5000'],
             'headline' => ['nullable', 'string', 'max:1000'],
             'format' => ['nullable', 'string', 'max:32'],
+            'format_id' => ['nullable', Rule::in(DesignFormat::ids())],
             'mode' => ['nullable', 'in:branded,free'],
             'platform' => ['nullable', 'string', 'max:64'],
             'content_text' => ['nullable', 'string', 'max:8000'],

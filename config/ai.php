@@ -52,4 +52,8 @@ return [
         'enabled' => (bool) env('AI_MODEL_DISCOVERY', true),
         'cache_ttl' => (int) env('AI_MODELS_CACHE_TTL', 3600),
     ],
+
+
+    // Days usage/activity logs and failed_jobs are kept before pruning.
+    'log_retention_days' => env('LOG_RETENTION_DAYS', 180),
 ];

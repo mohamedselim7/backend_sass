@@ -18,7 +18,7 @@ class Design extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'brand_id', 'post_id', 'headline', 'description', 'design_idea', 'format', 'status',
+        'user_id', 'brand_id', 'post_id', 'headline', 'description', 'design_idea', 'format', 'format_id', 'prompt_version', 'status',
     ];
 
     public function post(): BelongsTo

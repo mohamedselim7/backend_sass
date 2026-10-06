@@ -19,9 +19,11 @@ Route::prefix('v1')->middleware(['auth:api', 'active'])->group(function () {
     // --- Usage log ---
     Route::get('usage', [V1\UsageController::class, 'index']);
 
-    // --- Marketing angles library ---
-    Route::get('angles', [V1\MarketingAngleController::class, 'index']);
-    Route::get('angles/{angle}/usages', [V1\MarketingAngleController::class, 'usages']);
+    // --- Marketing angles library: removed from the user-facing product (spec #23). ---
+    // Data tables and the controller are kept for safety; routes are disabled so no
+    // frontend entry point can reach this feature and no automatic generation can be triggered.
+    // Route::get('angles', [V1\MarketingAngleController::class, 'index']);
+    // Route::get('angles/{angle}/usages', [V1\MarketingAngleController::class, 'usages']);
 
     // --- Settings ---
     Route::get('settings', [V1\SettingsController::class, 'show']);
@@ -37,10 +39,10 @@ Route::prefix('v1')->middleware(['auth:api', 'active'])->group(function () {
 
         Route::post('activity', [V1\ActivityController::class, 'store']);
 
-        Route::post('angles', [V1\MarketingAngleController::class, 'store']);
-        Route::post('angles/generate', [V1\MarketingAngleController::class, 'generate'])->middleware('throttle:generate');
-        Route::post('angles/{angle}/status', [V1\MarketingAngleController::class, 'status']);
-        Route::post('angles/{angle}/usage', [V1\MarketingAngleController::class, 'recordUsage']);
+        // Route::post('angles', [V1\MarketingAngleController::class, 'store']);
+        // Route::post('angles/generate', [V1\MarketingAngleController::class, 'generate'])->middleware('throttle:generate');
+        // Route::post('angles/{angle}/status', [V1\MarketingAngleController::class, 'status']);
+        // Route::post('angles/{angle}/usage', [V1\MarketingAngleController::class, 'recordUsage']);
 
         Route::patch('settings', [V1\SettingsController::class, 'update']);
 

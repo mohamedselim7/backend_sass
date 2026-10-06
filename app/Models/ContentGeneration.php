@@ -18,7 +18,7 @@ class ContentGeneration extends Model
 
     protected $fillable = [
         'user_id', 'brand_id', 'brand_name', 'business_type', 'business_brief',
-        'monthly_brief', 'options', 'status', 'provider', 'model', 'write_mode',
+        'monthly_brief', 'options', 'status', 'provider', 'model', 'write_mode', 'prompt_version',
     ];
 
     protected function casts(): array

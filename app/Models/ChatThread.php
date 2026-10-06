@@ -15,11 +15,17 @@ class ChatThread extends Model
     use HasUuidKey;
     use SoftDeletes;
 
-    protected $fillable = ['user_id', 'brand_id', 'title', 'mode', 'provider', 'model', 'last_message_at'];
+    protected $fillable = [
+        'user_id', 'brand_id', 'title', 'mode', 'provider', 'model', 'last_message_at',
+        'summary', 'summary_until_message_id', 'summary_updated_at',
+    ];
 
     protected function casts(): array
     {
-        return ['last_message_at' => 'datetime'];
+        return [
+            'last_message_at' => 'datetime',
+            'summary_updated_at' => 'datetime',
+        ];
     }
 
     public function messages(): HasMany

@@ -17,6 +17,9 @@ use Throwable;
  */
 class ContentGenerator implements ContentGeneratorInterface
 {
+    /** Prompt version propagated to GenerateContentAction -> ContentService::storeGeneration. */
+    public const VERSION = ContentPrompts::VERSION;
+
     public function __construct(private readonly ProviderResolver $resolver) {}
 
     public function generatePlan(array $input): array

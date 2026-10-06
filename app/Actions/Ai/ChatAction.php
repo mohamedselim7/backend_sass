@@ -16,6 +16,7 @@ class ChatAction
         private readonly CreditService $credits,
         private readonly UsageLogger $logger,
         private readonly ProviderResolver $resolver,
+        private readonly ChatContextBuilder $contextBuilder,
     ) {}
 
     /** @return array{thread: ChatThread, messages: \Illuminate\Support\Collection<int, ChatMessage>} */
@@ -52,18 +53,9 @@ class ChatAction
             $options = array_filter(['provider' => $data['provider'] ?? null, 'model' => $data['model'] ?? null]);
             $textProvider = $this->resolver->text($user, $options);
 
-            // Previous turns only (the current message is appended explicitly so it is
-            // always the final "user" turn, even when timestamps tie within the same second).
-            $history = $thread->messages()
-                ->whereKeyNot($userMessage->getKey())
-                ->whereIn('role', ['user', 'assistant'])
-                ->whereNotNull('content')
-                ->orderByDesc('created_at')->orderByDesc('id')
-                ->limit(9)->get()->reverse()
-                ->map(fn (ChatMessage $m) => ['role' => $m->role, 'content' => (string) $m->content])
-                ->filter(fn (array $m) => trim($m['content']) !== '')
-                ->values()->all();
-
+            // Bounded context: rolling summary + last N messages (plan-aware), never the full thread.
+            $context = $this->contextBuilder->build($user, $thread, $userMessage);
+            $history = $context['history'];
             $history[] = ['role' => 'user', 'content' => (string) $data['message']];
 
             $system = 'أنت مساعد ذكاء اصطناعي داخل منصة iden، أجب عن سؤال المستخدم الأخير مباشرةً وبإيجاز ووضوح وبنفس لغته، واستخدم المحادثة السابقة كسياق فقط.';
@@ -78,6 +70,7 @@ class ChatAction
             ]);
 
             $thread->update(['last_message_at' => now()]);
+            $this->contextBuilder->rollSummaryIfNeeded($thread, $textProvider);
 
             $this->logger->usage($user, 'chat_message', ['status' => 'success', 'ref_id' => $thread->getKey()]);
 

@@ -4,6 +4,7 @@ namespace App\Actions\Ai;
 
 use App\Models\ContentGeneration;
 use App\Models\User;
+use App\Services\Ai\ContentGenerator;
 use App\Services\Ai\Contracts\ContentGeneratorInterface;
 use App\Services\ContentService;
 use App\Services\CreditService;
@@ -44,6 +45,7 @@ class GenerateContentAction
                 'options' => ['platforms' => $data['platforms'] ?? [], 'posts_per_plan' => $data['posts_per_plan'] ?? null],
                 'provider' => $data['provider'] ?? null,
                 'model' => $data['model'] ?? null,
+                'prompt_version' => ContentGenerator::VERSION,
             ], $plans);
 
             $this->logger->usage($user, 'content_generate', [

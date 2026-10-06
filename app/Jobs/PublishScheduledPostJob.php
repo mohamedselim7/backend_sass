@@ -28,7 +28,10 @@ class PublishScheduledPostJob implements ShouldQueue
 
     public array $backoff = [15, 60, 180];
 
-    public function __construct(public string $scheduledPostId) {}
+    public function __construct(public string $scheduledPostId)
+    {
+        $this->onQueue(config('queue.names.default', 'default'));
+    }
 
     public function handle(SocialPublisher $publisher): void
     {

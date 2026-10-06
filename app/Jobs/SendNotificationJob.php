@@ -30,7 +30,10 @@ class SendNotificationJob implements ShouldQueue
     /**
      * @param  array{user_id?:?string,type:string,title:string,body?:?string,link?:?string,data?:array}  $attributes
      */
-    public function __construct(public array $attributes) {}
+    public function __construct(public array $attributes)
+    {
+        $this->onQueue(config('queue.names.notifications', 'notifications'));
+    }
 
     public function handle(): void
     {

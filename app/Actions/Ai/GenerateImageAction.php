@@ -6,6 +6,7 @@ use App\Models\Media;
 use App\Models\User;
 use App\Services\Ai\ProviderResolver;
 use App\Services\CreditService;
+use App\Services\Ai\Prompts\DesignFormat;
 use App\Services\MediaService;
 use App\Services\UsageLogger;
 use Illuminate\Support\Facades\Http;
@@ -31,7 +32,7 @@ class GenerateImageAction
             $options = array_filter([
                 'provider' => $data['provider'] ?? null,
                 'model' => $data['model'] ?? null,
-                'size' => $data['size'] ?? null,
+                'size' => $data['size'] ?? (isset($data['format_id']) ? DesignFormat::sizeFor($data['format_id']) : null),
             ]);
 
             $imageProvider = $this->resolver->image($user, $options);

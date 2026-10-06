@@ -15,6 +15,7 @@ class Plan extends Model
     protected $fillable = [
         'code', 'name', 'description', 'price', 'currency', 'interval',
         'monthly_credits', 'features', 'is_active', 'sort_order', 'ai_model',
+        'ai_queue', 'queue_priority',
     ];
 
     /** @return array<int,string> */
@@ -25,7 +26,12 @@ class Plan extends Model
 
     protected function casts(): array
     {
-        return ['price' => 'decimal:2', 'features' => 'array', 'is_active' => 'boolean'];
+        return [
+            'price' => 'decimal:2',
+            'features' => 'array',
+            'is_active' => 'boolean',
+            'queue_priority' => 'integer',
+        ];
     }
 
     public function subscriptions(): HasMany

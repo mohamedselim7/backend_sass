@@ -20,6 +20,7 @@ class ContentGenerationResource extends JsonResource
             'provider' => $this->provider,
             'model' => $this->model,
             'write_mode' => $this->write_mode,
+            'prompt_version' => $this->prompt_version,
             'plans' => ContentPlanResource::collection($this->whenLoaded('plans')),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

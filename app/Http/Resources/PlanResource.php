@@ -9,6 +9,8 @@ class PlanResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $isAdmin = (bool) $request->user()?->hasRole('admin');
+
         return [
             'id' => $this->id,
             'code' => $this->code,
@@ -19,8 +21,12 @@ class PlanResource extends JsonResource
             'interval' => $this->interval,
             'monthly_credits' => (int) $this->monthly_credits,
             'features' => $this->features ?? [],
-            // Internal model is only exposed to admins.
-            'ai_model' => $this->when($request->user()?->hasRole('admin'), $this->ai_model),
+            'is_active' => (bool) $this->is_active,
+            'sort_order' => $this->sort_order,
+            // Internal routing/model fields are only exposed to admins.
+            'ai_model' => $this->when($isAdmin, $this->ai_model),
+            'ai_queue' => $this->when($isAdmin, $this->ai_queue),
+            'queue_priority' => $this->when($isAdmin, $this->queue_priority),
         ];
     }
 }

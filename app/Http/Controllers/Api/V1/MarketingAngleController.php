@@ -15,8 +15,12 @@ use Illuminate\Http\Request;
 use Throwable;
 
 /**
- * "Marketing angles library" used by the planning page: list, generate,
- * save, change status and record usage. Every query is scoped to the owner.
+ * DEPRECATED (spec #23): "Marketing angles library" has been removed from the
+ * user-facing product. All routes pointing to this controller are disabled in
+ * routes/v1/workspace.php. Kept in place (unrouted) so existing data and any
+ * future admin-only tooling can still rely on `MarketingAngle`/`MarketingAngleUsage`
+ * without a destructive migration. Do not wire this controller back into
+ * user-facing routes without explicit product approval.
  */
 class MarketingAngleController extends Controller
 {

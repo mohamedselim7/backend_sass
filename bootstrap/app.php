@@ -37,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\AssignRequestId::class,
         ]);
         $middleware->web(append: [
             \App\Http\Middleware\SetAdminLocale::class,

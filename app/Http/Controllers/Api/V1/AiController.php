@@ -20,7 +20,6 @@ use App\Http\Resources\Ai\MarketingAngleResource;
 use App\Http\Resources\ContentGenerationResource;
 use App\Http\Resources\DesignResource;
 use App\Http\Resources\MediaResource;
-use App\Jobs\GenerateContentJob;
 use App\Models\ChatMessage;
 use App\Models\ChatThread;
 use App\Services\Ai\ProviderResolver;
@@ -47,14 +46,24 @@ class AiController extends Controller
         $idempotencyKey = $request->header('Idempotency-Key');
 
         if ($data['async'] ?? false) {
-            GenerateContentJob::dispatch($user->getKey(), $data);
+            // Charges once and persists the operation before queueing; throws
+            // InsufficientCreditsException (no 202) when the balance is too low.
+            $job = app(\App\Services\Ai\AiJobService::class)
+                ->startContentGeneration($user, $data, $idempotencyKey);
 
-            return response()->json(['data' => ['status' => 'queued']], 202);
+            return response()->json(['data' => array_merge(['job_id' => $job->id], $job->toApi())], 202);
         }
 
         $generation = $this->generateContent->execute($user, $data, $idempotencyKey);
 
         return (new ContentGenerationResource($generation))->response()->setStatusCode(201);
+    }
+
+    public function jobStatus(Request $request, int $id): JsonResponse
+    {
+        $job = \App\Models\AiGenerationJob::where('user_id', $request->user()->getKey())->findOrFail($id);
+
+        return response()->json(['data' => $job->toApi()]);
     }
 
     public function angles(AnglesRequest $request): JsonResponse
@@ -129,6 +138,48 @@ class AiController extends Controller
         return response()->json([
             'thread' => $this->chatThreadRow($thread),
             'messages' => $thread->messages->map(fn (ChatMessage $message) => $this->chatMessageRow($message))->values(),
+        ]);
+    }
+
+    /**
+     * Cursor-paginated messages for a thread (GET /v1/ai/chat/threads/{thread}/messages).
+     * Default 30, max 100. `cursor` = last seen message id; omit for the most recent page.
+     */
+    public function chatThreadMessages(Request $request, ChatThread $thread): JsonResponse
+    {
+        $thread = $this->ownedChatThread($request, $thread);
+        $data = $request->validate([
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'cursor' => ['nullable', 'uuid'],
+        ]);
+        $perPage = (int) ($data['per_page'] ?? 30);
+
+        // We page backwards from the newest message, so "cursor" means
+        // "give me messages older than this id".
+        $query = ChatMessage::query()->where('thread_id', $thread->getKey())->orderByDesc('created_at')->orderByDesc('id');
+        if (! empty($data['cursor'])) {
+            $cursorMessage = ChatMessage::find($data['cursor']);
+            if ($cursorMessage) {
+                $query->where(function ($q) use ($cursorMessage) {
+                    $q->where('created_at', '<', $cursorMessage->created_at)
+                        ->orWhere(function ($q2) use ($cursorMessage) {
+                            $q2->where('created_at', '=', $cursorMessage->created_at)->where('id', '<', $cursorMessage->getKey());
+                        });
+                });
+            }
+        }
+
+        $rows = $query->limit($perPage + 1)->get();
+        $hasMore = $rows->count() > $perPage;
+        $page = $rows->take($perPage)->reverse()->values();
+
+        return response()->json([
+            'data' => $page->map(fn (ChatMessage $message) => $this->chatMessageRow($message))->values(),
+            'meta' => [
+                'has_more' => $hasMore,
+                'next_cursor' => $hasMore ? $page->first()?->getKey() : null,
+                'per_page' => $perPage,
+            ],
         ]);
     }
 

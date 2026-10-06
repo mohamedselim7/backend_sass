@@ -97,3 +97,9 @@ echo.private(`users.${userId}`)
   `/auth/me`, `/plans` and `/billing/wallet`.
 - Send `Idempotency-Key: <uuid>` on generation and design requests so a retry
   after a dropped connection does not charge twice.
+
+## Production build notes
+- `bun install && bun run build` -> upload `dist/` as described in README.txt.
+- Heavy libraries are loaded on demand: chat markdown (Streamdown, Shiki, Mermaid, KaTeX) via `lazy-markdown.tsx`; xlsx/jspdf/html2canvas/jszip via dynamic import. Chat route chunk dropped from ~1.21 MB to ~0.17 MB.
+- Design previews render in a square box (`aspect-square`, `object-cover`, centred). Default design size is square.
+- AI background jobs: poll `GET /api/v1/ai/jobs/{id}` with `useAiJobStatus`.

@@ -17,6 +17,8 @@ class DesignResource extends JsonResource
             'description' => $this->description,
             'design_idea' => $this->design_idea,
             'format' => $this->format,
+            'format_id' => $this->format_id,
+            'prompt_version' => $this->prompt_version,
             'status' => $this->status,
             'versions' => DesignVersionResource::collection($this->whenLoaded('versions')),
             'latest_version' => new DesignVersionResource($this->whenLoaded('latestVersion')),

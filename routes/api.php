@@ -9,6 +9,22 @@ use Illuminate\Support\Facades\Route;
  * require a verified email.
  */
 
+// Liveness/readiness probe for container orchestrators and load balancers.
+Route::get('health', function () {
+    $dbOk = true;
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+    } catch (\Throwable $e) {
+        $dbOk = false;
+    }
+
+    return response()->json([
+        'status' => $dbOk ? 'ok' : 'degraded',
+        'database' => $dbOk,
+        'time' => now()->toIso8601String(),
+    ], $dbOk ? 200 : 503);
+});
+
 Route::prefix('v1')->group(function () {
     // --- Public ---
     Route::post('auth/register', [V1\Auth\AuthController::class, 'register'])->middleware('throttle:10,1');

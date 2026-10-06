@@ -7,6 +7,7 @@ use App\Models\DesignVersion;
 use App\Models\User;
 use App\Services\Ai\ProviderResolver;
 use App\Services\CreditService;
+use App\Services\Ai\Prompts\DesignFormat;
 use App\Services\MediaService;
 use App\Services\UsageLogger;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,9 @@ use Throwable;
 
 class GenerateDesignAction
 {
+    /** Bumped alongside designSystemPrompt() wording; stored on the Design record. */
+    public const VERSION = 'design.v2025-10-06';
+
     public function __construct(
         private readonly CreditService $credits,
         private readonly UsageLogger $logger,
@@ -40,8 +44,14 @@ class GenerateDesignAction
                 $options,
             );
 
-            $imageProvider = $this->resolver->image($user, $options);
-            $imageResult = $imageProvider->generate($result->text, $options);
+            // Square (1:1) is the default everywhere a design preview is shown; the
+            // registry in config('design.php') is the single source of truth for
+            // every supported ratio on both this endpoint and /ai/image.
+            $formatId = DesignFormat::isValid($data['format_id'] ?? null) ? $data['format_id'] : DesignFormat::default();
+            $imageOptions = $options + ['size' => DesignFormat::sizeFor($formatId)];
+
+            $imageProvider = $this->resolver->image($user, $imageOptions);
+            $imageResult = $imageProvider->generate($result->text, $imageOptions);
 
             if ($imageResult->isUrl) {
                 $response = Http::timeout(30)->get($imageResult->base64OrUrl);
@@ -62,7 +72,7 @@ class GenerateDesignAction
 
             $remainingCredits = (int) $charge->balance_after;
 
-            $design = DB::transaction(function () use ($data, $user, $result, $imageResult, $media, $cost, $remainingCredits, $mandatory) {
+            $design = DB::transaction(function () use ($data, $user, $result, $imageResult, $media, $cost, $remainingCredits, $mandatory, $formatId) {
                 $design = Design::create([
                     'user_id' => $user->getKey(),
                     'brand_id' => $data['brand_id'] ?? null,
@@ -70,6 +80,8 @@ class GenerateDesignAction
                     'headline' => $data['headline'] ?? null,
                     'design_idea' => $result->text,
                     'format' => $data['format'] ?? 'post',
+                    'format_id' => $formatId,
+                    'prompt_version' => self::VERSION,
                     'status' => 'generated',
                 ]);
 

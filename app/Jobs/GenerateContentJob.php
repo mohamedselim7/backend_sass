@@ -2,84 +2,85 @@
 
 namespace App\Jobs;
 
-use App\Models\User;
+use App\Models\AiGenerationJob;
+use App\Services\Ai\AiJobService;
 use App\Services\Ai\Contracts\ContentGeneratorInterface;
 use App\Services\ContentService;
-use App\Services\CreditService;
-use App\Services\UsageLogger;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Runs an AI content generation in the background for `async=true` requests.
- * Credits are charged before dispatch (see AiController); on failure here we
- * refund them so the user is never left charged for a plan that never landed.
+ * Processes one logical AI operation (ai_generation_jobs row).
+ * Credits were charged once when the operation was created.
+ * Intermediate failures only retry; refund happens in failed() exactly once.
+ * The queue payload is just the job id.
  */
 class GenerateContentJob implements ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     public int $tries = 3;
 
     public array $backoff = [10, 30, 60];
 
-    /**
-     * @param  array{brand_id?:string,brand_name?:string,brief?:string,business_brief?:string,monthly_brief?:string,platforms?:array,options?:array,provider?:string,model?:string,plan_count?:int,posts_per_plan?:int}  $payload
-     */
-    public function __construct(
-        public string $userId,
-        public array $payload,
-    ) {}
+    public int $timeout = 300;
 
-    public function handle(ContentGeneratorInterface $generator, ContentService $contentService, CreditService $credits): void
+    public function __construct(public int $aiJobId) {}
+
+    public function handle(ContentGeneratorInterface $generator, ContentService $contentService, AiJobService $jobs): void
     {
-        $user = User::findOrFail($this->userId);
+        $job = $jobs->claim($this->aiJobId);
+        if (! $job) {
+            return; // already finished: duplicate delivery, do nothing
+        }
 
-        $planCount = max(1, (int) ($this->payload['plan_count'] ?? 1));
-        $cost = $credits->cost('content_plan') * $planCount;
-        $key = 'ai-content-generate-async:'.$this->userId.':'.sha1(json_encode($this->payload));
+        $user = $job->user;
+        $payload = $job->payload ?? [];
 
-        $charge = $credits->charge($user, 'content_plan', $cost, idempotencyKey: $key);
+        $plans = $generator->generatePlan(array_merge($payload, ['_user' => $user]));
 
-        try {
-            $plans = $generator->generatePlan(array_merge($this->payload, ['_user' => $user]));
+        $generation = DB::transaction(function () use ($contentService, $user, $payload, $plans, $jobs, $job) {
+            $fresh = AiGenerationJob::whereKey($job->id)->lockForUpdate()->first();
+            if ($fresh->status === AiGenerationJob::COMPLETED) {
+                return null; // another worker already stored the result
+            }
 
             $generation = $contentService->storeGeneration($user, [
-                'brand_id' => $this->payload['brand_id'] ?? null,
-                'brand_name' => $this->payload['brand_name'] ?? null,
-                'business_brief' => $this->payload['brief'] ?? $this->payload['business_brief'] ?? null,
-                'options' => ['platforms' => $this->payload['platforms'] ?? [], 'posts_per_plan' => $this->payload['posts_per_plan'] ?? null],
-                'provider' => $this->payload['provider'] ?? null,
-                'model' => $this->payload['model'] ?? null,
+                'brand_id' => $payload['brand_id'] ?? null,
+                'brand_name' => $payload['brand_name'] ?? null,
+                'business_brief' => $payload['brief'] ?? $payload['business_brief'] ?? null,
+                'options' => ['platforms' => $payload['platforms'] ?? [], 'posts_per_plan' => $payload['posts_per_plan'] ?? null],
+                'provider' => $payload['provider'] ?? null,
+                'model' => $payload['model'] ?? null,
             ], $plans);
 
+            $jobs->complete($job->id, (string) $generation->getKey());
+
+            return $generation;
+        });
+
+        // Side effects run after commit, at most once per operation.
+        if ($generation && $jobs->claimNotification($job->id)) {
             \App\Notifications\GenerationReadyNotification::send($user, $generation);
             \App\Events\GenerationCompleted::dispatch($generation);
-        } catch (Throwable $e) {
-            $credits->refund($user, $charge, 'async content generation failed');
-
-            Log::error('GenerateContentJob failed', [
-                'user_id' => $this->userId,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
         }
     }
 
+    /** Called once by Laravel after the final attempt. Refund is idempotent anyway. */
     public function failed(Throwable $exception): void
     {
         Log::error('GenerateContentJob permanently failed', [
-            'user_id' => $this->userId,
+            'ai_job_id' => $this->aiJobId,
             'error' => $exception->getMessage(),
         ]);
+
+        app(AiJobService::class)->failPermanently($this->aiJobId, 'generation_failed', $exception->getMessage());
     }
 }

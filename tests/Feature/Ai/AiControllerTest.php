@@ -84,41 +84,103 @@ class AiControllerTest extends TestCase
         $this->assertSame(100, (int) $user->fresh()->wallet->balance);
     }
 
-    public function test_content_generate_async_dispatches_job(): void
+    public function test_content_generate_async_charges_once_and_dispatches_job(): void
     {
         \Illuminate\Support\Facades\Queue::fake();
         $user = $this->actingAsUser();
         app(CreditService::class)->grant($user, 100);
 
-        $this->postJson('/api/v1/ai/content/generate', [
+        $res = $this->postJson('/api/v1/ai/content/generate', [
             'brief' => 'A test brief',
             'platforms' => ['instagram'],
             'async' => true,
-        ])->assertStatus(202);
+        ])->assertStatus(202)->assertJsonPath('data.status', 'queued');
 
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\GenerateContentJob::class);
-        // Not charged synchronously; the job charges when it runs.
-        $this->assertSame(100, (int) $user->fresh()->wallet->balance);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\GenerateContentJob::class, 1);
+        $this->assertSame(90, (int) $user->fresh()->wallet->balance);
+        $this->getJson('/api/v1/ai/jobs/'.$res->json('data.job_id'))->assertOk()->assertJsonPath('data.status', 'queued');
     }
 
-    public function test_angles_happy_path(): void
+    public function test_same_idempotency_key_reuses_operation(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
+        $user = $this->actingAsUser();
+        app(CreditService::class)->grant($user, 100);
+        $body = ['brief' => 'A test brief', 'platforms' => ['instagram'], 'async' => true];
+
+        $a = $this->postJson('/api/v1/ai/content/generate', $body, ['Idempotency-Key' => 'k1'])->assertStatus(202);
+        $b = $this->postJson('/api/v1/ai/content/generate', $body, ['Idempotency-Key' => 'k1'])->assertStatus(202);
+
+        $this->assertSame($a->json('data.job_id'), $b->json('data.job_id'));
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\GenerateContentJob::class, 1);
+        $this->assertSame(90, (int) $user->fresh()->wallet->balance);
+    }
+
+    public function test_same_payload_new_key_is_new_charge(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $user = $this->actingAsUser();
+        app(CreditService::class)->grant($user, 100);
+        $body = ['brief' => 'A test brief', 'platforms' => ['instagram'], 'async' => true];
+
+        $this->postJson('/api/v1/ai/content/generate', $body, ['Idempotency-Key' => 'k1'])->assertStatus(202);
+        $this->postJson('/api/v1/ai/content/generate', $body, ['Idempotency-Key' => 'k2'])->assertStatus(202);
+
+        $this->assertSame(80, (int) $user->fresh()->wallet->balance);
+    }
+
+    public function test_async_with_insufficient_credits_is_rejected_before_queueing(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        $this->actingAsUser();
+
+        $this->postJson('/api/v1/ai/content/generate', [
+            'brief' => 'A test brief', 'platforms' => ['instagram'], 'async' => true,
+        ])->assertStatus(402);
+
+        \Illuminate\Support\Facades\Queue::assertNothingPushed();
+        $this->assertSame(0, \App\Models\AiGenerationJob::count());
+    }
+
+    public function test_permanent_failure_refunds_exactly_once(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
         $user = $this->actingAsUser();
         app(CreditService::class)->grant($user, 100);
 
-        $this->fakeChat(json_encode(['angles' => [
-            ['title' => 'T1', 'body' => 'B1', 'category' => 'c', 'tags' => []],
-        ]]));
+        $id = $this->postJson('/api/v1/ai/content/generate', [
+            'brief' => 'A test brief', 'platforms' => ['instagram'], 'async' => true,
+        ])->json('data.job_id');
 
-        $this->postJson('/api/v1/ai/angles', ['topic' => 'coffee', 'count' => 1])
-            ->assertOk()
-            ->assertJsonCount(1, 'data');
+        $job = new \App\Jobs\GenerateContentJob($id);
+        $job->failed(new \RuntimeException('boom'));
+        $job->failed(new \RuntimeException('boom again'));
+
+        $this->assertSame(100, (int) $user->fresh()->wallet->balance);
+        $this->assertSame('failed', \App\Models\AiGenerationJob::find($id)->status);
     }
 
-    public function test_angles_validation(): void
+    public function test_finished_job_is_not_reprocessed(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
+        $user = $this->actingAsUser();
+        app(CreditService::class)->grant($user, 100);
+
+        $id = $this->postJson('/api/v1/ai/content/generate', [
+            'brief' => 'A test brief', 'platforms' => ['instagram'], 'async' => true,
+        ])->json('data.job_id');
+        \App\Models\AiGenerationJob::whereKey($id)->update(['status' => 'completed', 'notified_at' => now()]);
+
+        $this->assertNull(app(\App\Services\Ai\AiJobService::class)->claim($id));
+        $this->assertSame(90, (int) $user->fresh()->wallet->balance);
+    }
+
+    public function test_angles_library_endpoint_is_removed(): void
+    {
+        // Marketing angles library was removed from the product (spec section 23).
         $this->actingAsUser();
-        $this->postJson('/api/v1/ai/angles', [])->assertStatus(422);
+        $status = $this->postJson('/api/v1/ai/angles', ['topic' => 'coffee'])->status();
+        $this->assertContains($status, [404, 405]);
     }
 
     public function test_chat_happy_path(): void
@@ -331,7 +393,6 @@ class AiControllerTest extends TestCase
 
     public function test_unauthenticated_is_rejected_across_endpoints(): void
     {
-        $this->postJson('/api/v1/ai/angles', [])->assertStatus(401);
         $this->postJson('/api/v1/ai/chat', [])->assertStatus(401);
         $this->postJson('/api/v1/ai/design', [])->assertStatus(401);
         $this->postJson('/api/v1/ai/image', [])->assertStatus(401);

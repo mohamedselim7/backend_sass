@@ -11,6 +11,7 @@ use App\Models\ContentPlan;
 use App\Models\ContentPost;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Persists AI-generated content plans and owns the post lifecycle. The state
@@ -39,6 +40,7 @@ class ContentService
                 'provider' => $meta['provider'] ?? null,
                 'model' => $meta['model'] ?? null,
                 'write_mode' => $meta['write_mode'] ?? null,
+                'prompt_version' => $meta['prompt_version'] ?? null,
                 'status' => 'completed',
             ]);
 
@@ -59,8 +61,11 @@ class ContentService
                     'tone_id' => $planData['tone_id'] ?? null,
                 ]);
 
+                $rows = [];
+                $now = now();
                 foreach (array_values($planData['posts'] ?? []) as $postIndex => $post) {
-                    ContentPost::create([
+                    $rows[] = [
+                        'id' => (string) Str::uuid(),
                         'plan_id' => $plan->getKey(),
                         'brand_id' => $generation->brand_id,
                         'user_id' => $user->getKey(),
@@ -72,15 +77,24 @@ class ContentService
                         'cta' => $post['cta'] ?? null,
                         'design_idea' => $post['design_idea'] ?? null,
                         'platform' => $post['platform'] ?? null,
-                        'hashtags' => $post['hashtags'] ?? [],
-                        'media' => $post['media'] ?? [],
-                        'suggested_platforms' => $post['suggested_platforms'] ?? [],
+                        'hashtags' => json_encode($post['hashtags'] ?? [], JSON_UNESCAPED_UNICODE),
+                        'media' => json_encode($post['media'] ?? [], JSON_UNESCAPED_UNICODE),
+                        'suggested_platforms' => json_encode($post['suggested_platforms'] ?? [], JSON_UNESCAPED_UNICODE),
                         'source' => $post['source'] ?? 'ai',
                         'status' => PostStatus::Generated->value,
                         'language_id' => $post['language_id'] ?? $plan->language_id,
                         'dialect_id' => $post['dialect_id'] ?? $plan->dialect_id,
                         'tone_id' => $post['tone_id'] ?? $plan->tone_id,
-                    ]);
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                // Bulk insert: one query per plan instead of N — safe here because
+                // posts have no model events/observers this flow depends on and
+                // IDs/timestamps are generated up front.
+                if ($rows !== []) {
+                    ContentPost::query()->insert($rows);
                 }
             }
 

@@ -60,6 +60,11 @@ class AdminPlanController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'ai_model' => [$required, 'string', 'in:'.implode(',', Plan::aiModels())],
+            // Queue routing: an explicit queue name (e.g. "ai-high") always
+            // wins over queue_priority when both are present (see
+            // PlanQueueResolver). Neither field hardcodes a plan name/price.
+            'ai_queue' => ['nullable', 'string', 'max:64', 'in:'.implode(',', array_values(config('queue.names')))],
+            'queue_priority' => ['nullable', 'integer', 'min:1', 'max:3'],
         ]);
     }
 }
