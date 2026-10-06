@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Events\NotificationCreated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\NotificationResource;
 use App\Models\Notification;
@@ -48,6 +49,21 @@ class NotificationController extends Controller
         }
 
         return response()->json(['message' => 'تم وضع علامة مقروء.']);
+    }
+
+    /** إشعار يرسله المستخدم لنفسه عند انتهاء عملية قام بها (مثل اكتمال خطة). */
+    public function storeSelf(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'body' => ['nullable', 'string', 'max:5000'],
+            'link' => ['nullable', 'string', 'max:1024'],
+        ]);
+
+        $notification = Notification::create($data + ['user_id' => $request->user()->getKey()]);
+        NotificationCreated::dispatch($notification);
+
+        return (new NotificationResource($notification))->response()->setStatusCode(201);
     }
 
     public function markAllRead(Request $request): JsonResponse

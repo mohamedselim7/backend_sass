@@ -14,7 +14,7 @@ class ReelsRequest extends FormRequest
             'brief' => ['nullable', 'string', 'max:20000'],
             'count' => ['required', 'integer', 'min:1', 'max:20'],
             'platform' => ['nullable', 'string', 'max:64'],
-            'duration' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'duration' => ['nullable', 'string', 'max:64'], // مثل «20-30 ثانية» كما ترسلها الواجهة
             'language' => ['nullable', 'string', 'max:32'],
             'dialect' => ['nullable', 'string', 'max:32'],
             'tone' => ['nullable', 'string', 'max:64'],

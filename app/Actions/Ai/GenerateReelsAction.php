@@ -40,7 +40,7 @@ class GenerateReelsAction
                 .'"fullScript":string,"caption":string,"sources":array}]}';
 
             $message = sprintf(
-                "الوضع: %s\nالوصف/الموجز: %s\nعدد الريلز المطلوب: %d\nالمنصة: %s\nالمدة (ثانية): %s\nاللغة: %s\nاللهجة: %s\nالنبرة: %s\nالجمهور: %s\nالهدف: %s",
+                "الوضع: %s\nالوصف/الموجز: %s\nعدد الريلز المطلوب: %d\nالمنصة: %s\nالمدة: %s\nاللغة: %s\nاللهجة: %s\nالنبرة: %s\nالجمهور: %s\nالهدف: %s",
                 $data['mode'] ?? 'plan',
                 $data['brief'] ?? $data['prompt'] ?? '',
                 $count,
@@ -58,17 +58,7 @@ class GenerateReelsAction
             $reels = $response['reels'] ?? [];
             $reels = array_slice(is_array($reels) ? array_values($reels) : [], 0, $count);
 
-            $reels = array_map(static function ($reel) {
-                $reel = is_array($reel) ? $reel : [];
-
-                return array_filter([
-                    'title' => $reel['title'] ?? null,
-                    'hook' => $reel['hook'] ?? null,
-                    'fullScript' => $reel['fullScript'] ?? $reel['full_script'] ?? null,
-                    'caption' => $reel['caption'] ?? null,
-                    'sources' => $reel['sources'] ?? null,
-                ], static fn ($v) => $v !== null);
-            }, $reels);
+            $reels = array_map(static fn ($reel) => self::normalizeReel($reel), $reels);
 
             $result = array_filter([
                 'planName' => $response['planName'] ?? $response['plan_name'] ?? null,
@@ -86,5 +76,45 @@ class GenerateReelsAction
             $this->logger->usage($user, 'reels_generate', ['status' => 'failed', 'error' => $e->getMessage()]);
             throw $e;
         }
+    }
+
+    /**
+     * الواجهة تقرأ كل حقول الريل كنصوص؛ الموديل قد يرجّع المصادر أو غيرها كمصفوفة،
+     * وهذا كان يُسقط صفحة الريلز («حدث خطأ غير متوقع»). نحوّل كل حقل إلى نص.
+     */
+    public static function normalizeReel(mixed $reel): array
+    {
+        $reel = is_array($reel) ? $reel : [];
+        $fields = [
+            'title' => $reel['title'] ?? null,
+            'hook' => $reel['hook'] ?? null,
+            'fullScript' => $reel['fullScript'] ?? $reel['full_script'] ?? $reel['script'] ?? null,
+            'caption' => $reel['caption'] ?? null,
+            'sources' => $reel['sources'] ?? null,
+        ];
+
+        return array_filter(array_map(static fn ($v) => self::toText($v), $fields), static fn ($v) => $v !== null && $v !== '');
+    }
+
+    private static function toText(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (is_array($value)) {
+            $lines = array_map(static function ($item) {
+                if (is_array($item)) {
+                    $parts = array_filter(array_map(static fn ($x) => is_scalar($x) ? trim((string) $x) : '', $item));
+
+                    return implode(' — ', $parts);
+                }
+
+                return is_scalar($item) ? trim((string) $item) : '';
+            }, array_values($value));
+
+            return trim(implode("\n", array_filter($lines, static fn ($l) => $l !== '')));
+        }
+
+        return is_scalar($value) ? trim((string) $value) : null;
     }
 }

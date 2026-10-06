@@ -16,7 +16,7 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/password/forgot', [V1\Auth\PasswordController::class, 'forgot'])->middleware('throttle:password-reset');
     Route::post('auth/password/reset', [V1\Auth\PasswordController::class, 'reset'])->middleware('throttle:6,1');
     Route::get('auth/verify/{id}/{hash}', [V1\Auth\EmailVerificationController::class, 'verify'])
-        ->middleware('throttle:6,1')
+        ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');
 
     // Refresh accepts an expired access token that is still inside JWT_REFRESH_TTL,
@@ -44,13 +44,13 @@ Route::prefix('v1')->group(function () {
         Route::get('notifications/unread-count', [V1\NotificationController::class, 'unreadCount']);
         Route::post('notifications/{notification}/read', [V1\NotificationController::class, 'markRead']);
         Route::post('notifications/read-all', [V1\NotificationController::class, 'markAllRead']);
+        Route::post('notifications/self', [V1\NotificationController::class, 'storeSelf'])->middleware('throttle:30,1');
 
         Route::get('billing/wallet', [V1\BillingController::class, 'wallet']);
-        Route::get('credit-tips', [V1\CreditTipController::class, 'index']);
         Route::get('billing/credits', [V1\BillingController::class, 'creditHistory']);
         Route::get('billing/payments/{payment}', [V1\BillingController::class, 'payment']);
 
-        // Support conversations with the iden team (own threads only — enforced by policy).
+        // Support conversations with the Ma3roof team (own threads only — enforced by policy).
         Route::get('support/threads', [V1\SupportController::class, 'index']);
         Route::get('support/unread-count', [V1\SupportController::class, 'unreadCount']);
         Route::post('support/threads', [V1\SupportController::class, 'store'])->middleware('throttle:10,1');
